@@ -9,7 +9,9 @@ const resultsSection = document.querySelector("#search-results-section");
 const searchFeedback = document.querySelector("#search-feedback");
 const saveFeedback = document.querySelector("#save-feedback");
 const searchCache = new Map();
-const authorNameCache = new Map();
+const loadMoreButton = document.querySelector("#load-more");
+let searchSession = null;
+const editionControllers = new Set();
 let quoteReferencePromise = null;
 const modeInputs = document.querySelectorAll('input[name="search-mode"]');
 const searchModes = {
@@ -25,6 +27,8 @@ function cancelSearch() {
   requestVersion += 1;
   if (activeRequest) activeRequest.controller.abort();
   activeRequest = null;
+  loadMoreButton.disabled = false;
+  loadMoreButton.textContent = "더 보기";
   searchButton.textContent = "검색";
   resultsSection.setAttribute("aria-busy", "false");
 }
@@ -32,6 +36,8 @@ function cancelSearch() {
 // 검색 방식 변경 시 입력 안내와 결과를 초기화합니다. 캐시는 방식별로 유지합니다.
 function changeSearchMode() {
   cancelSearch();
+  searchSession = null;
+  loadMoreButton.hidden = true;
   const mode = document.querySelector('input[name="search-mode"]:checked').value;
   const label = searchModes[mode].label;
   document.querySelector("#search-heading").textContent = `${label}으로 검색`;
@@ -40,8 +46,8 @@ function changeSearchMode() {
   queryInput.placeholder = searchModes[mode].placeholder;
   document.querySelector("#search-hint").textContent = mode === "quote"
     ? "한국어 Wikiquote의 관련 문서 후보를 최대 10개 찾습니다. 정확한 출처를 확정하는 검색이 아닙니다."
-    : mode === "author" ? "한국어·원어 이름으로 최대 10권을 찾습니다. 결과가 없으면 Wikidata 인명 연결을 확인합니다."
-    : `${label}으로 최대 10권을 찾습니다. 추가한 책은 ‘읽을 예정’으로 저장됩니다.`;
+    : mode === "author" ? "여러 언어의 이름·별칭과 확인된 저자 ID를 함께 검색합니다. 작품은 10권씩 표시합니다."
+    : "원래 제목과 확인 가능한 다국어 작품 ID를 함께 찾습니다. 작품은 10권씩 표시합니다.";
   document.querySelector("#related-search-panel").hidden = true;
   renderAuthorResolution(null);
   renderQuoteReferences([]);
@@ -182,134 +188,9 @@ function createQuoteCard(doc) {
   return card;
 }
 
-// 두 서비스 모두 URLSearchParams로 검색어를 인코딩합니다.
-function createSearchUrl(mode, query) {
-  if (mode === "quote") {
-    const params = new URLSearchParams({ action: "query", list: "search", srsearch: query,
-      srnamespace: "0", srlimit: "10", srprop: "snippet", format: "json", origin: "*" });
-    return `https://ko.wikiquote.org/w/api.php?${params}`;
-  }
-  const params = new URLSearchParams({ [mode]: query, limit: "10",
-    fields: "key,title,author_name,first_publish_year,cover_i" });
-  return `https://openlibrary.org/search.json?${params}`;
-}
-
-// HTTP 200이어도 MediaWiki error 객체나 예상과 다른 응답은 오류로 처리합니다.
-function getSearchDocs(data, mode) {
-  const docs = mode === "quote" ? data?.query?.search : data?.docs;
-  if (!data || data.error || !Array.isArray(docs) || docs.some((doc) =>
-    !doc || typeof doc !== "object" || Array.isArray(doc) ||
-    (mode === "quote" && (typeof doc.title !== "string" || !doc.title.trim() || doc.ns !== 0 ||
-      !Number.isSafeInteger(doc.pageid) || doc.pageid <= 0)))) {
-    throw new Error("예상하지 못한 API 응답");
-  }
-  return docs.slice(0, 10);
-}
-
-// 외부 보완 서비스는 5초 이내로 제한합니다. 상위 요청 취소도 함께 전달합니다.
-async function withSupplementTimeout(signal, action) {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  signal.addEventListener("abort", abort, { once: true });
-  if (signal.aborted) abort();
-  const timer = setTimeout(abort, 5000);
-  try { return await action(controller.signal); }
-  finally { clearTimeout(timer); signal.removeEventListener("abort", abort); }
-}
-
+// 로컬 문헌 목록도 공통 요청 제한과 오류 검사를 사용합니다.
 async function fetchJson(url, signal) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const data = await response.json();
-  if (!data || data.error) throw new Error("API 응답 오류");
-  return data;
-}
-
-function normalizePersonName(name) {
-  return name.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
-}
-
-// 검색 순위가 아니라 정확한 한국어 이름/별칭, 사람(Q5), OL 저자 ID를 확인합니다.
-// 동명이인이 여럿이거나 검색이 잘린 경우 자동 선택하지 않습니다.
-async function findAuthorNames(query, signal) {
-  const cacheKey = normalizePersonName(query);
-  if (authorNameCache.has(cacheKey)) return authorNameCache.get(cacheKey);
-  const searchParams = new URLSearchParams({ action: "wbsearchentities", search: query,
-    language: "ko", uselang: "ko", type: "item", limit: "5", format: "json", origin: "*" });
-  const search = await fetchJson(`https://www.wikidata.org/w/api.php?${searchParams}`, signal);
-  if (!Array.isArray(search.search)) throw new Error("인명 검색 응답 오류");
-  const ids = search.search.map((item) => item.id).filter((id) => /^Q\d+$/.test(id)).slice(0, 5);
-  if (!ids.length) return { candidates: [], incomplete: false };
-  const entityParams = new URLSearchParams({ action: "wbgetentities", ids: ids.join("|"),
-    props: "labels|aliases|claims|descriptions", languages: "ko|en", format: "json", origin: "*" });
-  const data = await fetchJson(`https://www.wikidata.org/w/api.php?${entityParams}`, signal);
-  if (!data.entities || typeof data.entities !== "object") throw new Error("인명 정보 응답 오류");
-  const candidates = [];
-  for (const id of ids) {
-    const entity = data.entities[id];
-    if (!entity || entity.missing !== undefined) continue;
-    const names = [entity.labels?.ko?.value, ...(entity.aliases?.ko || []).map((alias) => alias.value)];
-    if (!names.some((name) => typeof name === "string" && normalizePersonName(name) === cacheKey)) continue;
-    const values = (property) => (entity.claims?.[property] || [])
-      .filter((claim) => claim.rank !== "deprecated").map((claim) => claim.mainsnak?.datavalue?.value);
-    if (!values("P31").some((value) => value?.id === "Q5")) continue;
-    const authorIds = [...new Set(values("P648").filter((value) => typeof value === "string" && /^OL\d+A$/.test(value)))].slice(0, 10);
-    const name = entity.labels?.en?.value;
-    if (!authorIds.length || typeof name !== "string" || !name.trim()) continue;
-    candidates.push({ id, name, label: entity.labels?.ko?.value || query,
-      description: entity.descriptions?.ko?.value || entity.descriptions?.en?.value || "설명 없음", authorIds });
-  }
-  const result = { candidates, incomplete: search["search-continue"] !== undefined };
-  if (authorNameCache.size >= 30) authorNameCache.delete(authorNameCache.keys().next().value);
-  authorNameCache.set(cacheKey, result);
-  return result;
-}
-
-// 검증된 인물 항목의 저자 ID로 검색해 비슷한 이름의 다른 저자 혼입을 줄입니다.
-async function searchAuthorIds(candidate, signal) {
-  const ids = candidate.authorIds.filter((id) => /^OL\d+A$/.test(id));
-  if (!ids.length) throw new Error("저자 식별자 없음");
-  const params = new URLSearchParams({ q: `author_key:(${ids.join(" OR ")})`, limit: "10",
-    fields: "key,title,author_name,cover_i,first_publish_year" });
-  return getSearchDocs(await fetchJson(`https://openlibrary.org/search.json?${params}`, signal), "author");
-}
-
-// 기존 검색을 먼저 실행합니다. 보완이 실패하면 원래 결과를 그대로 반환합니다.
-async function searchWithEnhancements(mode, query, signal, selectedAuthor) {
-  if (selectedAuthor) {
-    const docs = await searchAuthorIds(selectedAuthor, signal);
-    return { docs, resolution: { selected: selectedAuthor, query } };
-  }
-  const docs = getSearchDocs(await fetchJson(createSearchUrl(mode, query), signal), mode);
-  if (mode === "author" && docs.length === 0 && /[가-힣]/.test(query)) {
-    try {
-      return await withSupplementTimeout(signal, async (childSignal) => {
-        const names = await findAuthorNames(query, childSignal);
-        if (names.candidates.length === 1 && !names.incomplete) {
-          const selected = names.candidates[0];
-          const expanded = await searchAuthorIds(selected, childSignal);
-          return expanded.length ? { docs: expanded, resolution: { selected, query } }
-            : { docs, resolution: { note: "인명은 연결했지만 도서 결과가 없어 기존 검색 결과를 유지했습니다." } };
-        }
-        return { docs, resolution: { query, candidates: names.candidates,
-          note: names.incomplete ? "인명 후보가 많아 자동 연결하지 않았습니다. 아래 후보를 확인하거나 원어 이름으로 검색해 주세요."
-            : names.candidates.length > 1 ? "동명이인 후보가 있습니다. 설명과 인명 정보를 확인한 뒤 직접 선택해 주세요."
-            : "정확히 연결할 인명 정보를 찾지 못했습니다. 원어 이름으로도 검색해 보세요." } };
-      });
-    } catch (error) {
-      if (signal.aborted) throw error;
-      return { docs, cacheable: false, resolution: { note: "다국어 인명 연결에 실패하여 기존 검색 결과를 유지했습니다. 원어 이름으로 검색할 수 있습니다." } };
-    }
-  }
-  // 구두점·공백만 정리합니다. 번역의 뜻이나 어미를 임의로 바꾸지 않습니다.
-  const normalized = query.normalize("NFKC").replace(/[“”"‘’'.,!?…。！？]/g, " ").replace(/\s+/g, " ").trim();
-  if (mode === "quote" && !docs.length && normalized && normalized !== query) {
-    try {
-      const retry = await withSupplementTimeout(signal, (childSignal) => fetchJson(createSearchUrl(mode, normalized), childSignal));
-      return { docs: getSearchDocs(retry, mode) };
-    } catch (error) { if (signal.aborted) throw error; }
-  }
-  return { docs };
+  return LibrarySearch.fetchJson(url, signal);
 }
 
 function externalLink(label, url) {
@@ -322,11 +203,11 @@ function renderAuthorResolution(resolution) {
   const panel = document.querySelector("#author-resolution");
   panel.replaceChildren(); panel.hidden = !resolution;
   if (!resolution) return;
-  panel.append(makeText("h2", "다국어 인명 연결"));
+  panel.append(makeText("h2", resolution.kind === "title" ? "다국어 작품 연결" : "다국어 인명 연결"));
   if (resolution.selected) {
     const person = resolution.selected;
     panel.append(makeText("p", `${resolution.query} → ${person.name}`),
-      makeText("p", person.description, "hint"), externalLink("Wikidata 인명 정보 확인", `https://www.wikidata.org/wiki/${person.id}`));
+      makeText("p", person.description, "hint"), externalLink("Wikidata 항목 확인", `https://www.wikidata.org/wiki/${person.id}`));
   } else {
     panel.append(makeText("p", resolution.note));
     for (const person of resolution.candidates || []) {
@@ -338,7 +219,7 @@ function renderAuthorResolution(resolution) {
         searchBooks({ preventDefault() {} }, person);
       });
       row.append(makeText("p", person.description, "hint"),
-        externalLink("인명 정보 확인", `https://www.wikidata.org/wiki/${person.id}`), button);
+        externalLink("항목 정보 확인", `https://www.wikidata.org/wiki/${person.id}`), button);
       panel.append(row);
     }
   }
@@ -389,8 +270,13 @@ function renderQuoteReferences(records) {
 }
 
 // textContent로 외부 문자열을 표시하고, 표지 로딩 실패 시 안내로 대체합니다.
-function renderResults(docs) {
-  resultsList.replaceChildren();
+function renderResults(docs, append = false) {
+  if (!append) {
+    for (const controller of editionControllers) controller.abort();
+    editionControllers.clear();
+    resultsList.replaceChildren();
+  }
+  const existing = new Set(Array.from(resultsList.querySelectorAll(".search-card"), (card) => card.dataset.workId));
   const isQuote = document.querySelector('input[name="search-mode"]:checked').value === "quote";
   document.querySelector("#result-count").textContent = isQuote ? `${docs.length}개 문서` : `${docs.length}권`;
   for (const doc of docs) {
@@ -399,8 +285,10 @@ function renderResults(docs) {
       continue;
     }
     const book = normalizeBook(doc);
+    if (append && existing.has(book.id)) continue;
     const card = document.createElement("article");
     card.className = "book-card search-card";
+    card.dataset.workId = book.id;
     const cover = makeText("div", "표지 정보 없음", "cover-placeholder");
     if (book.coverId) {
       const image = document.createElement("img");
@@ -422,87 +310,160 @@ function renderResults(docs) {
     add.setAttribute("aria-label", `${book.title} 내 서재에 추가`);
     add.addEventListener("click", () => addToLibrary(book));
     actions.append(add);
+    const editionInfo = Number.isSafeInteger(doc.edition_count) && doc.edition_count > 0
+      ? `작품 단위 · 등록 판본 ${doc.edition_count}개` : "작품 단위 · 판본 수 정보 없음";
+    const editions = document.createElement("p"); editions.className = "edition-info";
+    editions.append(makeText("span", editionInfo));
+    if (book.id) {
+      editions.append(document.createElement("br"), externalLink("판본·번역 정보 보기", `https://openlibrary.org/works/${book.id.slice("openlibrary:".length)}`));
+    }
     card.append(cover, makeText("h3", book.title), makeText("p", book.author, "author"),
-      makeText("p", `최초 출판연도: ${book.year}`, "publish-year"), actions);
+      makeText("p", `최초 출판연도: ${book.year}`, "publish-year"), editions, actions);
+    if (book.id) card.insertBefore(createEditionDetails(book.id.slice("openlibrary:".length)), actions);
     resultsList.append(card);
   }
 }
 
-// 버튼과 Enter는 같은 submit 이벤트를 사용합니다. 입력 중에는 API를 호출하지 않습니다.
-async function searchBooks(event, selectedAuthor = null) {
+// 클릭한 작품의 실제 판본만 10개씩 표시합니다. 판본 제목이 같아도 ID로 구분합니다.
+function createEditionDetails(work) {
+  const details = document.createElement("details"); details.className = "edition-details";
+  details.append(makeText("summary", "판본·번역 목록"), makeText("p", "같은 작품의 판본입니다. 서재에는 작품 단위로 저장됩니다.", "hint"));
+  const list = document.createElement("div");
+  const message = makeText("p", "", "hint"); message.setAttribute("role", "status");
+  const more = makeText("button", "판본 더 보기", "secondary"); more.type = "button"; more.hidden = true;
+  details.append(list, message, more);
+  let offset = 0, loading = false, loaded = false;
+  const seen = new Set();
+  async function load() {
+    if (loading) return;
+    loading = true; more.disabled = true; message.textContent = "판본을 불러오고 있습니다…";
+    const controller = new AbortController(); editionControllers.add(controller);
+    try {
+      const page = await LibrarySearch.editions(work, offset, controller.signal);
+      if (!details.isConnected) return;
+      for (const entry of page.entries) {
+        const id = typeof entry?.key === "string" ? entry.key.match(/^\/books\/(OL\d+M)$/)?.[1] : null;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const item = document.createElement("div"); item.className = "edition-item";
+        const languages = Array.isArray(entry.languages) ? entry.languages.map((language) => {
+          const code = language?.key?.match(/^\/languages\/([a-z]{2,3})$/)?.[1];
+          if (!code) return null;
+          try { return new Intl.DisplayNames(["ko"], { type: "language" }).of(code); } catch (error) { return code; }
+        }).filter(Boolean) : [];
+        item.append(makeText("strong", typeof entry.title === "string" ? entry.title : "제목 정보 없음"),
+          makeText("p", `판본 ID: ${id} · 출판: ${typeof entry.publish_date === "string" ? entry.publish_date : "정보 없음"}`, "hint"),
+          makeText("p", `언어: ${languages.length ? languages.join(", ") : "정보 없음"}`, "hint"),
+          externalLink("이 판본 원문 정보", `https://openlibrary.org/books/${id}`));
+        list.append(item);
+      }
+      offset += page.entries.length; loaded = true;
+      more.hidden = !page.entries.length || (page.total !== null ? offset >= page.total : page.entries.length < 10);
+      more.textContent = "판본 더 보기";
+      message.textContent = seen.size ? `${seen.size}개 판본을 표시합니다.` : "제공된 판본 정보가 없습니다.";
+    } catch (error) {
+      if (details.isConnected && !controller.signal.aborted) { message.textContent = "판본을 불러오지 못했습니다. 기존 정보는 유지됩니다."; more.hidden = false; more.textContent = "다시 불러오기"; }
+    } finally { editionControllers.delete(controller); loading = false; more.disabled = false; }
+  }
+  details.addEventListener("toggle", () => { if (details.open && !loaded) load(); });
+  more.addEventListener("click", load);
+  return details;
+}
+
+// 검색 상태와 화면을 함께 갱신합니다. 합친 검색의 전체 건수를 추정해 표시하지 않습니다.
+function showSearchSession(session, append = false) {
+  renderResults(session.docs, append);
+  renderAuthorResolution(session.resolution || null);
+  loadMoreButton.hidden = !session.hasMore;
+  const message = session.mode === "quote"
+    ? session.docs.length ? `${session.docs.length}개의 관련 문서 후보를 문구 관련도순으로 표시합니다. 출처는 원문에서 확인해 주세요.`
+      : "관련 문서가 없습니다. 표현을 바꾸거나 짧은 문장으로 검색해 주세요."
+    : session.docs.length ? `${session.docs.length}개 작품을 표시합니다.${session.hasMore ? " 더 보기로 추가 작품을 확인하세요." : ""}`
+      : "검색 결과가 없습니다. 다른 표기나 검색어로 검색해 주세요.";
+  setMessage(searchFeedback, [message, ...(session.notices || [])].join(" "));
+}
+
+function rememberSearch(key, session) {
+  if (!searchCache.has(key) && searchCache.size >= 20) searchCache.delete(searchCache.keys().next().value);
+  searchCache.set(key, session);
+}
+
+// 버튼과 Enter는 같은 경로를 사용합니다. 새 검색은 이전 요청과 페이지 상태를 취소합니다.
+async function searchBooks(event, selected = null) {
   event.preventDefault();
   const mode = document.querySelector('input[name="search-mode"]:checked').value;
-  if (!Object.hasOwn(searchModes, mode)) return;
-  if (selectedAuthor && mode !== "author") return;
-  const query = queryInput.value.trim();
-  if (!query) {
-    cancelSearch();
-    renderAuthorResolution(null);
-    renderQuoteReferences([]);
-    document.querySelector("#related-search-panel").hidden = true;
-    renderResults([]);
-    setMessage(saveFeedback, "");
-    setMessage(searchFeedback, `검색할 ${searchModes[mode].label}을 입력해 주세요.`, true);
-    queryInput.focus();
-    return;
-  }
-  const cacheKey = `${mode}:${query}${selectedAuthor ? `:${selectedAuthor.id}` : ""}`;
-  // 같은 요청의 연타는 무시하고, 다른 검색은 이전 요청을 중단한 뒤 즉시 실행합니다.
-  if (activeRequest?.key === cacheKey) return;
+  if (!Object.hasOwn(searchModes, mode) || (selected && selected.kind !== mode)) return;
+  const query = queryInput.value.normalize("NFKC").replace(/\s+/g, " ").trim();
+  const key = LibrarySearch.cacheKey(mode, query, selected);
+  if (query && activeRequest?.key === key) return;
   cancelSearch();
   const version = requestVersion;
+  searchSession = null; loadMoreButton.hidden = true;
   document.querySelector("#related-search-panel").hidden = true;
-  setMessage(saveFeedback, "");
-  renderAuthorResolution(null);
-  renderQuoteReferences([]);
-  renderResults([]);
-  searchButton.textContent = "재검색";
-  resultsSection.setAttribute("aria-busy", "true");
-  setMessage(searchFeedback, mode === "quote" ? "관련 문서 후보를 찾고 있습니다. 잠시 기다려 주세요…" : "책을 찾고 있습니다. 잠시 기다려 주세요…");
+  renderAuthorResolution(null); renderQuoteReferences([]); renderResults([]); setMessage(saveFeedback, "");
+  if (!query) { setMessage(searchFeedback, "검색어를 입력해 주세요.", true); queryInput.focus(); return; }
   const controller = new AbortController();
-  activeRequest = { key: cacheKey, controller };
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  activeRequest = { key, controller };
+  resultsSection.setAttribute("aria-busy", "true"); searchButton.textContent = "재검색";
+  setMessage(searchFeedback, "검색하고 있습니다. 잠시 기다려 주세요…");
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
-    if (mode === "quote") {
-      const references = await findQuoteReferences(query);
+    const references = mode === "quote" ? await findQuoteReferences(query) : [];
+    if (version !== requestVersion) return;
+    renderQuoteReferences(references);
+    let session = searchCache.get(key);
+    if (!session) {
+      session = await LibrarySearch.search(mode, query, controller.signal, selected, references.flatMap((record) => record.variants));
       if (version !== requestVersion) return;
-      renderQuoteReferences(references);
-    }
-    let result = searchCache.get(cacheKey);
-    if (!result) {
-      result = await searchWithEnhancements(mode, query, controller.signal, selectedAuthor);
-      if (version !== requestVersion) return;
-      // 최근 검색 20개만 메모리에 보관하며 페이지를 닫으면 사라집니다.
-      if (result.cacheable !== false) {
-        if (searchCache.size >= 20) searchCache.delete(searchCache.keys().next().value);
-        searchCache.set(cacheKey, result);
+      session.cacheKey = key;
+      if (session.cacheable !== false) {
+        rememberSearch(key, session);
       }
     }
     if (version !== requestVersion) return;
-    const docs = result.docs;
-    renderResults(docs);
-    renderAuthorResolution(result.resolution || null);
-    if (mode === "quote") {
-      setMessage(searchFeedback, docs.length ? `${docs.length}개의 관련 문서 후보입니다. 출처는 원문에서 확인해 주세요.`
-        : "관련 문서가 없습니다. 표현을 바꾸거나 짧은 문장으로 검색해 주세요.");
-    } else {
-      setMessage(searchFeedback, docs.length ? `검색 결과 ${docs.length}권을 표시합니다.` : `검색 결과가 없습니다. 다른 ${searchModes[mode].label}으로 검색해 주세요.`);
-    }
+    searchSession = session; showSearchSession(session);
   } catch (error) {
-    if (version !== requestVersion) return;
-    setMessage(searchFeedback, error.name === "AbortError"
-      ? "요청 시간이 초과되었습니다. 잠시 후 다시 검색해 주세요."
-      : "검색에 실패했습니다. 네트워크 또는 API 응답을 확인하고 잠시 후 다시 검색해 주세요.", true);
+    if (version === requestVersion) setMessage(searchFeedback, error.status === 429
+      ? "API 요청이 많아 잠시 쉬고 있습니다. 잠시 후 다시 검색해 주세요."
+      : error.name === "AbortError" ? "요청 시간이 초과되었습니다. 다시 검색해 주세요."
+      : "검색에 실패했습니다. 네트워크 또는 API 응답을 확인해 주세요.", true);
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timer);
     if (version === requestVersion) {
-      activeRequest = null;
-      searchButton.textContent = "검색";
+      activeRequest = null; searchButton.textContent = "검색";
       resultsSection.setAttribute("aria-busy", "false");
     }
   }
 }
 
+// 기존 카드를 유지한 채 다음 작품을 합칩니다. 실패·취소 시 이전 상태를 보존합니다.
+async function loadMoreBooks() {
+  if (!searchSession?.hasMore || activeRequest) return;
+  const previous = searchSession;
+  cancelSearch(); const version = requestVersion;
+  const controller = new AbortController();
+  activeRequest = { key: `more:${previous.cacheKey}`, controller };
+  loadMoreButton.disabled = true; loadMoreButton.textContent = "추가 검색 중…";
+  resultsSection.setAttribute("aria-busy", "true");
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const session = await LibrarySearch.more(previous, controller.signal);
+    if (version !== requestVersion) return;
+    searchSession = session;
+    if (!session.notices.length) rememberSearch(session.cacheKey, session);
+    showSearchSession(session, true);
+  } catch (error) {
+    if (version === requestVersion) setMessage(searchFeedback, "추가 검색에 실패했습니다. 기존 결과는 유지됩니다. 다시 더 보기를 눌러 주세요.", true);
+  } finally {
+    clearTimeout(timer);
+    if (version === requestVersion) {
+      activeRequest = null; loadMoreButton.disabled = false; loadMoreButton.textContent = "더 보기";
+      resultsSection.setAttribute("aria-busy", "false");
+    }
+  }
+}
+
+loadMoreButton.addEventListener("click", loadMoreBooks);
 searchForm.addEventListener("submit", searchBooks);
 for (const input of modeInputs) input.addEventListener("change", changeSearchMode);
 

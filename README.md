@@ -7,9 +7,10 @@ HTML, CSS, 순수 JavaScript로 만든 독서 기록 웹앱입니다. 별도 빌
 VS Code에서 `index.html`을 Live Server로 엽니다. 현재 사용자 설정의 포트는 5505입니다. 파일을 직접 여는 `file://` 방식 대신 같은 HTTP 주소에서 두 페이지를 이용합니다.
 
 - **내 서재**: 제목·저자·독서 상태·메모 등록, 카드 조회, 수정, 삭제, 수정 취소.
-- **도서 검색**: 책 제목 또는 저자명을 선택한 뒤 버튼 또는 Enter로 Open Library 검색, 최대 10권 표시, 서재 추가.
+- **도서 검색**: 책 제목 또는 저자명을 선택한 뒤 버튼 또는 Enter로 Open Library 검색, 처음 10개 작품 표시 후 ‘더 보기’로 추가 조회, 서재 추가.
 - **명언·문장**: 한국어 Wikiquote에서 최대 10개의 관련 문서 후보를 찾습니다. 모든 후보는 ‘출처 미확인’으로 표시하며 원문 링크와 짧은 검색 결과 일부를 제공합니다. 문장의 저자나 출처 책을 확정하지 않습니다.
-- **한국어 외국 작가명**: 기존 저자 검색이 0건일 때만 Wikidata의 정확한 한국어 이름/별칭·사람 유형·Open Library 저자 ID를 대조합니다. 유일한 인물만 연결하고 동명이인은 직접 선택합니다. 예: 폴 발레리 → Paul Valéry, 헤르만 헤세 → Hermann Hesse. 원래 결과가 있으면 유지하며 보완 API 장애로 기존 검색을 막지 않습니다.
+- **다국어 인명·제목**: 한국어·영어·프랑스어·일본어 등의 라벨·별칭과 Wikidata의 외부 ID를 대조합니다. 원래 결과가 있어도 확인된 ID 결과를 보완하며 원래 결과를 버리지 않습니다. 동명이인·같은 제목·잘린 검색 결과는 사용자가 직접 선택합니다. 특정 작가의 이름 변환표는 없습니다.
+- **판본·번역**: 작품 카드의 ‘판본·번역 목록’을 열면 실제 판본 ID·제목·출판일·언어를 10개씩 확인할 수 있습니다. 작품(OL…W)과 판본(OL…M)을 구분하며 서재에는 기존처럼 작품 ID로 저장합니다. 작품 더 보기는 기존 카드와 열어둔 판본 목록을 유지합니다.
 - **문헌 대조 자료**: 별도로 확인한 `data/quote-references.json`의 표현과 정확히 일치할 때 작가·작품·근거 링크를 Wikiquote 후보와 분리해 표시합니다. 현재 「해변의 묘지」 관련 1개 항목만 수록했습니다. 등록되지 않은 문장을 추측해 채우지 않고 특정 한국어 판본의 문구도 확정하지 않습니다.
 - **관련 도서 검색**: 후보의 버튼을 누르면 문서 제목이 입력된 별도 폼이 열립니다. 검색어를 수정하고 책 제목/저자명 방식을 직접 선택한 뒤 Open Library 검색을 실행합니다. 후보나 연결 검색만으로 책을 저장하지 않으며, 실제 도서의 ‘내 서재에 추가’를 눌러야 저장됩니다.
 - 검색은 `fetch()`와 `async/await`로 실행합니다. 검색 방식과 검색어를 함께 키로 사용해 현재 페이지의 메모리에만 캐시합니다. 새 검색은 이전 요청을 중단하며, 늦은 이전 응답은 무시합니다.
@@ -22,12 +23,14 @@ index.html              첫 화면 / CRUD
 crud.js                 도서 등록·조회·수정·삭제
 api.html                도서 검색
 api.js                  Open Library·Wikiquote 검색 및 도서 연결·서재 추가
+search-engine.js        다국어 연결·API 요청 제한·검색 병합·정렬·작품/판본 페이지네이션
 css/assignment.css      공통 반응형 디자인
 data/quote-references.json  문헌 대조 출처 목록 (표현·작가·작품·근거 링크)
 PROJECT_STATE.md        3차 작업 전 구조·저장 규칙·백업 기록
 QA_REPORT.md            최종 검증 결과
 SEARCH_REPORT.md        이전 제목·저자 확장 및 명언 API 조사 기록
-SEARCH_ACCURACY_REPORT.md  다국어 검색 원인 분석·실제 응답 비교·최신 검사
+SEARCH_ACCURACY_REPORT.md  이전 다국어 검색 보완·실제 응답 비교 기록
+SEARCH_SYSTEM_REPORT.md  전체 검색 개선·28개 검색어 전후 비교·최종 검증
 css/style.css           기존 파일 보존 (현재 페이지에서 미사용)
 js/app.js               기존 파일 보존 (현재 페이지에서 미사용)
 ```
@@ -51,7 +54,7 @@ localStorage는 사용하는 브라우저와 출처(프로토콜·호스트·포
 
 ## 배포할 파일
 
-웹앱 실행 파일은 `index.html`, `crud.js`, `api.html`, `api.js`, `css/assignment.css`이며 문헌 대조 기능에는 `data/quote-references.json`도 필요합니다. 과제 설명용 문서도 함께 올릴 수 있습니다. 기존에 추적 중인 빈 파일 2개는 보존합니다. `.vscode/`, 임시 테스트 파일, 임시 브라우저 프로필은 배포용 커밋에 추가하지 않습니다.
+웹앱 실행 파일은 `index.html`, `crud.js`, `api.html`, `search-engine.js`, `api.js`, `css/assignment.css`이며 문헌 대조 기능에는 `data/quote-references.json`도 필요합니다. `api.html`은 검색 엔진을 먼저 로드합니다. 빌드나 설치는 필요 없습니다. 과제 설명용 문서도 함께 올릴 수 있습니다. 기존 빈 파일은 보존하며 `.vscode/`와 임시 테스트 파일은 배포용 파일에 추가하지 않습니다.
 
 ## GitHub Pages 배포 절차 — 아직 실행하지 않음
 
@@ -92,7 +95,7 @@ localStorage는 사용하는 브라우저와 출처(프로토콜·호스트·포
 | `format` | `json` |
 | `origin` | `*` (비인증 CORS) |
 
-응답의 `query.search`에서 `title`, `snippet`, `pageid`, `ns`를 확인합니다. API 자체 `error` 객체, HTTP 오류, 잘못된 JSON/구조, 15초 초과 요청도 처리합니다. 세 방식의 캐시는 분리하며 취소 신호를 무시하고 늦게 도착한 응답도 요청 번호로 걸러냅니다.
+응답의 `query.search`에서 `title`, `snippet`, `pageid`, `ns`를 확인합니다. API 자체 `error` 객체, HTTP 오류, 잘못된 JSON/구조도 처리합니다. 개별 API 요청은 8초, 인명·제목 보완은 9초, 문장 확장은 6초, 화면 검색 전체는 20초로 제한합니다. 문헌 목록은 별도 2.5초 제한입니다. 이미 성공한 결과는 보완 실패 시 유지합니다. 세 방식의 캐시는 분리하며 늦은 응답은 요청 번호로 걸러냅니다.
 
 스니펫은 HTML을 DOM에 삽입하지 않고 태그 제거·문자 참조 해석 후 `textContent`로 출력합니다. 최대 120자와 생략 표시만 제공하고 누락된 문장을 만들어 채우지 않습니다. 원문 링크는 고정된 `https://ko.wikiquote.org/wiki/` 주소에 인코딩한 문서 제목으로 생성하며 새 창 링크에는 `noopener noreferrer`를 적용합니다.
 
@@ -100,19 +103,21 @@ localStorage는 사용하는 브라우저와 출처(프로토콜·호스트·포
 
 ## 데이터 출처
 
-- [Open Library Search API](https://openlibrary.org/dev/docs/api/search): 선택한 방식의 `title` 또는 `author`, `limit=10`, `fields=key,title,author_name,first_publish_year,cover_i` 요청.
+- [Open Library Search API](https://openlibrary.org/dev/docs/api/search): `title`/`author` 또는 확인된 `author_key`/작품 `key`, `limit=10`, `offset`, 표시·정렬에 필요한 `author_key/edition_count/language` 등의 필드를 요청.
 - [Open Library Covers API](https://openlibrary.org/dev/docs/api/covers): Cover ID 기반 이미지와 `default=false` 오류 처리를 사용.
 - [MediaWiki Search API](https://www.mediawiki.org/wiki/API:Search), [비인증 CORS](https://www.mediawiki.org/wiki/API:Cross-site_requests#Unauthenticated_CORS_Requests): Wikiquote 관련 문서 후보 검색.
 - [한국어 Wikiquote 재사용 안내](https://ko.wikiquote.org/wiki/위키인용집:저작권), [인용문과 위키 편집물의 권리 구분 안내](https://en.wikiquote.org/wiki/Wikiquote:Copyrights#Licensing_and_downstream_use).
 
 API 키나 비밀번호는 필요하지 않습니다.
 
-## 다국어 연결·정규화의 범위
+## 다국어 연결·정규화와 페이지네이션
 
-Wikidata `wbsearchentities`로 최대 5개 후보를 찾고 `wbgetentities`로 한국어 이름/별칭, 사람(`P31=Q5`), Open Library 저자 ID(`P648`)를 확인합니다. 한국어 이름이 정확히 맞고 저자 ID가 있는 인물이 하나일 때만 `author_key`로 보완 검색합니다. 여러 사람 또는 잘린 검색 결과는 자동 선택하지 않으며 설명·Wikidata 링크와 선택 버튼을 제공합니다. 특정 작가의 이름 변환표를 하드코딩하지 않았습니다.
+입력 문자의 종류로 Wikidata 검색 언어를 고르고 필요하면 두 번째 언어/구두점 표기를 확인합니다. 한국어·영어·프랑스어·일본어·중국어·독일어·스페인어·러시아어 라벨/별칭을 대조하며 악센트 차이를 비교용으로 정규화합니다. 사람은 Q5, 작품은 Open Library 작품 ID를 확인합니다. 자동으로 연결하기 어려우면 설명과 항목 링크를 제공하고 사용자가 선택합니다.
 
-최초 한국어 0건 검색은 최대 네 단계(원래 Open Library → Wikidata 검색 → 인물 정보 일괄 조회 → 저자 ID 도서 검색)입니다. 보완 단계 전체를 5초로 제한하고 인명 30개·검색 20개를 현재 페이지 메모리에 캐시합니다. 보완 장애 결과는 검색 캐시에 고정하지 않으므로 같은 검색어로 재시도할 수 있습니다. 원래 결과가 있는 검색은 Wikidata를 호출하지 않습니다.
+원래 Open Library 결과와 확인된 인물/작품 ID 검색을 병합합니다. 병합 전 외부 ID가 Open Library redirect 레코드이면 대상 ID를 제한적으로 확인합니다. 작품은 제목이 아닌 작품 ID, 판본은 판본 ID로 중복 제거합니다. 같은 제목의 서로 다른 작품은 삭제하지 않습니다. 불러온 범위에서 정확한 제목/저자/ID 일치를 우선하며 추가 페이지는 기존 카드 뒤에 붙습니다. 전체 도서관의 순서를 미리 보장하지 않습니다.
 
-Wikiquote는 원래 입력을 먼저 검색하고 0건일 때만 유니코드·일부 구두점·공백을 정리해 한 차례 재검색합니다. 번역의 뜻이나 어미를 자동으로 바꾸지 않습니다. 별도 문헌 목록은 공백·일부 구두점을 제외한 등록 표현과의 정확한 일치만 사용합니다. 목록 파일을 읽지 못해도 Wikiquote 검색은 유지합니다. 자세한 실제 응답과 한계는 [검색 정확도 보고서](SEARCH_ACCURACY_REPORT.md)를 확인하세요.
+검색 결과는 출처별 offset과 미표시 버퍼를 보존해 10개씩 이어 보여줍니다. 실패한 추가 요청은 offset을 진행시키지 않아 재시도할 수 있습니다. 외부 호스트별 동시 요청은 하나, 시작 간격은 최소 1초로 제한합니다. HTTP 429이면 Retry-After 또는 기본 30초 동안 해당 호스트의 추가 호출을 중지합니다. 브라우저의 캐시는 페이지를 닫으면 사라지며, 검색 상태 20개·인명/작품 항목 40개·판본 페이지 30개를 보관합니다.
 
-다국어 데이터 근거: [Wikidata 접근 안내](https://www.wikidata.org/wiki/Wikidata:Data_access), [Wikibase API](https://www.mediawiki.org/wiki/Wikibase/API).
+명언은 원래 문장을 먼저 검색하고 문구 일치가 약하면 정확한 문장·등록된 검증 번역 표현 또는 짧은 핵심 구절로 최대 2회 추가 검색합니다. 문서 ID 중복을 제거하고 전체 문구·연속 구절·단어 겹침으로 정렬하며 짧은 구절에서만 얻은 후보는 보수적으로 평가합니다. 새 번역이나 출처를 생성하지 않습니다. 기존 문헌 대조 목록은 변경하지 않았고 일반 Wikiquote 후보와 분리합니다.
+
+외부 데이터 검토·정확도 한계·실제 전후 결과·최신 테스트는 [전체 검색 시스템 보고서](SEARCH_SYSTEM_REPORT.md)를 확인하세요. 실제 GitHub 커밋·push·Pages 배포는 하지 않았습니다.

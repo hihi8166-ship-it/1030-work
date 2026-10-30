@@ -90,6 +90,12 @@ footer { border-top: 1px solid var(--border); padding: 25px; text-align: center;
 .identity-option { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 14px; margin-top: 14px; border-top: 1px solid var(--border); }
 .identity-option .hint { flex-basis: 100%; margin: 0; }
 #author-resolution, #quote-references { overflow-wrap: anywhere; }
+.pagination { display: flex; justify-content: center; margin: 26px 0; }
+.edition-info { color: var(--muted); font-size: 12px; margin: 8px 0; }
+.edition-details { margin: 8px 0 20px; font-size: 12px; }
+.edition-details summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+.edition-item { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; overflow-wrap: anywhere; }
+.edition-item .hint { margin: 5px 0; }
 .search-controls { display: flex; gap: 10px; }
 .search-controls input { flex: 1; }
 .search-controls button { flex-shrink: 0; }
