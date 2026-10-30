@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>나만의 서재 | My Book Library</title>
+    <link rel="stylesheet" href="css/assignment.css" />
+    <script src="crud.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="index.html"
+        >나만의 서재<span>MY BOOK LIBRARY</span></a
+      >
+      <nav aria-label="주 메뉴">
+        <a href="index.html" aria-current="page">내 서재</a>
+        <a href="api.html">도서 검색</a>
+      </nav>
+    </header>
+    <main class="container">
+      <section class="intro">
+        <p class="eyebrow">A LITTLE SPACE FOR YOUR STORIES</p>
+        <h1>책과 함께 쌓아가는 나의 기록</h1>
+        <p>
+          읽고 싶은 책부터 오래 기억하고 싶은 문장까지, 나만의 서재에
+          담아보세요.
+        </p>
+      </section>
+      <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+      <div class="library-layout">
+        <section class="panel form-panel" aria-labelledby="form-heading">
+          <h2 id="form-heading">새 책 등록</h2>
+          <p class="hint">별표(*) 항목은 반드시 입력해 주세요.</p>
+          <form id="book-form">
+            <label for="title">책 제목 *</label>
+            <input
+              id="title"
+              name="title"
+              type="text"
+              required
+              maxlength="150"
+              placeholder="어떤 책을 읽고 싶나요?"
+            />
+            <label for="author">저자 *</label>
+            <input
+              id="author"
+              name="author"
+              type="text"
+              required
+              maxlength="100"
+              placeholder="저자 이름"
+            />
+            <label for="status">독서 상태</label>
+            <select id="status" name="status">
+              <option value="읽을 예정">읽을 예정</option>
+              <option value="읽는 중">읽는 중</option>
+              <option value="완독">완독</option>
+            </select>
+            <label for="memo">메모</label>
+            <textarea
+              id="memo"
+              name="memo"
+              rows="5"
+              maxlength="2000"
+              placeholder="기억하고 싶은 문장이나 감상을 남겨보세요."
+            ></textarea>
+            <div class="form-actions">
+              <button id="submit-button" type="submit">서재에 등록</button>
+              <button id="cancel-button" class="secondary" type="button" hidden>
+                수정 취소
+              </button>
+            </div>
+          </form>
+        </section>
+        <section class="books-section" aria-labelledby="books-heading">
+          <div class="section-heading">
+            <h2 id="books-heading">내 서재</h2>
+            <span id="book-count">0권</span>
+          </div>
+          <p id="empty-message" class="empty-state">
+            서재가 아직 비어 있어요.<br />첫 번째 책을 등록하고 독서 기록을
+            시작해 보세요.
+          </p>
+          <div id="book-list" class="book-grid"></div>
+        </section>
+      </div>
+    </main>
+    <footer>나만의 서재 · 기록은 이 브라우저에 저장됩니다.</footer>
+  </body>
+</html>

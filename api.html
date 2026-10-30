@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>도서 검색 | 나만의 서재</title>
+  <link rel="stylesheet" href="css/assignment.css">
+  <script src="api.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html">나만의 서재<span>MY BOOK LIBRARY</span></a>
+    <nav aria-label="주 메뉴">
+      <a href="index.html">내 서재</a>
+      <a href="api.html" aria-current="page">도서 검색</a>
+    </nav>
+  </header>
+  <main class="container">
+    <section class="intro">
+      <p class="eyebrow">DISCOVER YOUR NEXT BOOK</p>
+      <h1>도서 검색</h1>
+      <p>새로운 이야기를 찾아보고, 읽고 싶은 책을 내 서재에 담아보세요.</p>
+    </section>
+    <section class="panel search-panel" aria-labelledby="search-heading">
+      <h2 id="search-heading">책 제목으로 검색</h2>
+      <form id="search-form" role="search">
+        <label for="search-query">책 제목</label>
+        <div class="search-controls">
+          <input id="search-query" type="search" maxlength="200" placeholder="예: Harry Potter" aria-describedby="search-hint">
+          <button id="search-button" type="submit">검색</button>
+        </div>
+        <p id="search-hint" class="hint">검색 결과는 최대 10권입니다. 추가한 책은 ‘읽을 예정’으로 저장됩니다.</p>
+      </form>
+    </section>
+    <p id="search-feedback" class="feedback" role="status" aria-live="polite">책 제목을 입력하고 검색해 주세요.</p>
+    <p id="save-feedback" class="feedback" role="status" aria-live="polite"></p>
+    <section id="search-results-section" aria-labelledby="results-heading" aria-busy="false">
+      <div class="section-heading"><h2 id="results-heading">검색 결과</h2><span id="result-count">0권</span></div>
+      <div id="search-results" class="book-grid search-grid"></div>
+    </section>
+  </main>
+  <footer>도서 정보 및 표지 제공: <a href="https://openlibrary.org/" target="_blank" rel="noopener noreferrer">Open Library</a></footer>
+</body>
+</html>
