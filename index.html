@@ -3,11 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="읽고 싶은 책과 독서 기록을 모아두는 나만의 서재입니다."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%2335634e'/%3E%3Cpath d='M10 10h20v22H10zM15 10v22M18 16h8M18 21h8' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E"
+    />
     <title>나만의 서재 | My Book Library</title>
     <link rel="stylesheet" href="css/assignment.css" />
     <script src="crud.js" defer></script>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">본문으로 바로가기</a>
     <header class="site-header">
       <a class="brand" href="index.html"
         >나만의 서재<span>MY BOOK LIBRARY</span></a
@@ -17,7 +26,7 @@
         <a href="api.html">도서 검색</a>
       </nav>
     </header>
-    <main class="container">
+    <main id="main-content" class="container">
       <section class="intro">
         <p class="eyebrow">A LITTLE SPACE FOR YOUR STORIES</p>
         <h1>책과 함께 쌓아가는 나의 기록</h1>
@@ -25,6 +34,9 @@
           읽고 싶은 책부터 오래 기억하고 싶은 문장까지, 나만의 서재에
           담아보세요.
         </p>
+        <a class="intro-link" href="api.html"
+          >다음에 읽을 책 찾아보기 <span aria-hidden="true">↗</span></a
+        >
       </section>
       <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
       <div class="library-layout">

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "valery-cimetiere-marin-wind",
+    "variants": ["바람이 분다 살아야겠다", "바람이 일어난다 살아야겠다", "바람이 분다 살아보도록 해야겠다", "바람이 인다 살려고 애써야 한다"],
+    "author": "폴 발레리 (Paul Valéry)",
+    "work": "해변의 묘지 (Le Cimetière marin)",
+    "authorQuery": "Paul Valéry",
+    "checkedAt": "2026-10-30",
+    "note": "프랑스어 원문과 한국어 소개 자료에서 작가·작품을 대조했습니다. 한국어 표현은 번역본마다 다르며 특정 번역자·판본의 문구를 확정하지 않습니다.",
+    "sources": [
+      { "label": "프랑스어 원문·작가 확인", "url": "https://fr.wikisource.org/wiki/Le_Cimeti%C3%A8re_marin" },
+      { "label": "한국어 구절·작품 연결 확인 (충북도정소식)", "url": "https://www.chungbuk.go.kr/cbnews/selectBbsNttView.do?bbsNo=2953&key=5218&nttNo=399856&pageIndex=2203&pageUnit=10&searchCnd=all&searchCtgry=&searchKrwd=" },
+      { "label": "번역 표현 비교·서지 확인 (국회도서관)", "url": "https://dl.nanet.go.kr/detail/MONO1201642435" }
+    ]
+  }
+]

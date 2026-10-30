@@ -3,11 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Open Library에서 책을 검색하고 내 서재에 담아보세요.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%2335634e'/%3E%3Cpath d='M10 10h20v22H10zM15 10v22M18 16h8M18 21h8' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
   <title>도서 검색 | 나만의 서재</title>
   <link rel="stylesheet" href="css/assignment.css">
   <script src="api.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">본문으로 바로가기</a>
   <header class="site-header">
     <a class="brand" href="index.html">나만의 서재<span>MY BOOK LIBRARY</span></a>
     <nav aria-label="주 메뉴">
@@ -15,7 +18,7 @@
       <a href="api.html" aria-current="page">도서 검색</a>
     </nav>
   </header>
-  <main class="container">
+  <main id="main-content" class="container">
     <section class="intro">
       <p class="eyebrow">DISCOVER YOUR NEXT BOOK</p>
       <h1>도서 검색</h1>
@@ -24,19 +27,50 @@
     <section class="panel search-panel" aria-labelledby="search-heading">
       <h2 id="search-heading">책 제목으로 검색</h2>
       <form id="search-form" role="search">
+        <fieldset class="search-modes">
+          <legend>검색 방식</legend>
+          <div class="mode-options">
+            <label><input type="radio" name="search-mode" value="title" checked><span>책 제목</span></label>
+            <label><input type="radio" name="search-mode" value="author"><span>저자명</span></label>
+            <label><input type="radio" name="search-mode" value="quote"><span>명언·문장</span></label>
+          </div>
+        </fieldset>
         <label for="search-query">책 제목</label>
         <div class="search-controls">
           <input id="search-query" type="search" maxlength="200" placeholder="예: Harry Potter" aria-describedby="search-hint">
           <button id="search-button" type="submit">검색</button>
         </div>
-        <p id="search-hint" class="hint">검색 결과는 최대 10권입니다. 추가한 책은 ‘읽을 예정’으로 저장됩니다.</p>
+        <p id="search-hint" class="hint">책 제목으로 최대 10권을 찾습니다. 추가한 책은 ‘읽을 예정’으로 저장됩니다.</p>
+      </form>
+    </section>
+    <section id="related-search-panel" class="panel search-panel" aria-labelledby="related-heading" hidden>
+      <h2 id="related-heading">관련 도서 검색</h2>
+      <p id="related-document" class="hint"></p>
+      <p id="related-help" class="hint">인물 문서라면 저자명, 작품 문서라면 책 제목을 선택하세요. 문서 유형과 출처는 자동 판정하지 않습니다.</p>
+      <form id="related-search-form">
+        <label for="related-query">도서 검색어 (수정 가능)</label>
+        <input id="related-query" type="search" required maxlength="200" aria-describedby="related-help">
+        <label for="related-mode">검색 방식 직접 선택</label>
+        <select id="related-mode" required>
+          <option value="">검색 방식을 선택해 주세요</option>
+          <option value="title">책 제목</option>
+          <option value="author">저자명</option>
+        </select>
+        <div class="form-actions">
+          <button type="submit">선택한 방식으로 도서 검색</button>
+          <button id="related-cancel" class="secondary" type="button">취소</button>
+        </div>
       </form>
     </section>
     <p id="search-feedback" class="feedback" role="status" aria-live="polite">책 제목을 입력하고 검색해 주세요.</p>
     <p id="save-feedback" class="feedback" role="status" aria-live="polite"></p>
+    <section id="author-resolution" class="panel search-panel" aria-label="다국어 인명 연결" hidden></section>
+    <section id="quote-references" class="panel search-panel" aria-label="문헌으로 대조한 출처 자료" hidden></section>
     <section id="search-results-section" aria-labelledby="results-heading" aria-busy="false">
       <div class="section-heading"><h2 id="results-heading">검색 결과</h2><span id="result-count">0권</span></div>
+      <p id="quote-notice" class="quote-notice" hidden>관련 문서 후보이며 출처 미확인 상태입니다. 인물이나 작품이 검색되어도 문장의 저자 또는 출처 도서로 확정되지 않습니다. Wikiquote 원문을 확인해 주세요.</p>
       <div id="search-results" class="book-grid search-grid"></div>
+      <p id="quote-credit" class="hint quote-credit" hidden>검색 결과 일부만 짧게 표시합니다. 제공: <a href="https://ko.wikiquote.org/" target="_blank" rel="noopener noreferrer">한국어 Wikiquote</a> · <a href="https://ko.wikiquote.org/wiki/위키인용집:저작권" target="_blank" rel="noopener noreferrer">콘텐츠 재사용 안내</a>. 인용 원문과 번역문에는 별도 사용 조건이 적용될 수 있습니다.</p>
     </section>
   </main>
   <footer>도서 정보 및 표지 제공: <a href="https://openlibrary.org/" target="_blank" rel="noopener noreferrer">Open Library</a></footer>

@@ -18,7 +18,10 @@ let storageReady = true;
 function loadBooks() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === null) return [];
+    if (saved === null) {
+      storageReady = true;
+      return [];
+    }
     const parsed = JSON.parse(saved);
     if (!Array.isArray(parsed)) throw new Error("잘못된 저장 형식");
     const ids = new Set();
@@ -31,6 +34,7 @@ function loadBooks() {
       }
       ids.add(book.id);
     }
+    storageReady = true;
     return parsed;
   } catch (error) {
     storageReady = false;
@@ -68,6 +72,30 @@ function createTextElement(tag, text, className) {
   return element;
 }
 
+// 표지 정보가 있는 책은 실제 표지를, 없는 기존 책은 제목을 담은 기본 표지를 표시합니다.
+function createLibraryCover(book) {
+  const cover = document.createElement("div");
+  cover.className = "library-cover";
+  const fallback = document.createElement("div");
+  fallback.className = "book-cover-art";
+  fallback.setAttribute("aria-hidden", "true");
+  fallback.append(createTextElement("span", "MY BOOK LIBRARY", "cover-label"),
+    createTextElement("strong", book.title), createTextElement("span", book.author, "cover-author"));
+  cover.append(fallback);
+  if (Number.isSafeInteger(book.coverId) && book.coverId > 0) {
+    const image = document.createElement("img");
+    image.className = "book-cover";
+    image.alt = `${book.title} 표지`;
+    image.loading = "lazy";
+    image.width = 150;
+    image.height = 210;
+    image.addEventListener("error", () => image.replaceWith(fallback), { once: true });
+    image.src = `https://covers.openlibrary.org/b/id/${book.coverId}-M.jpg?default=false`;
+    cover.replaceChildren(image);
+  }
+  return cover;
+}
+
 // Read: 배열의 책마다 카드를 만들어 목록에 표시합니다.
 function renderBooks() {
   list.replaceChildren();
@@ -91,7 +119,7 @@ function renderBooks() {
     remove.setAttribute("aria-label", `${book.title} 삭제`);
     remove.addEventListener("click", () => deleteBook(book.id));
     actions.append(edit, remove);
-    card.append(badge, heading, author, memo, actions);
+    card.append(createLibraryCover(book), badge, heading, author, memo, actions);
     list.append(card);
   }
 }
@@ -156,7 +184,10 @@ form.addEventListener("submit", (event) => {
     return;
   }
   const isEditing = editingId !== null;
+  // 기존 객체를 먼저 복사하여 표지 ID 등 선택 정보도 수정 후 유지합니다.
+  const originalBook = isEditing ? books.find((item) => item.id === editingId) : {};
   const book = {
+    ...originalBook,
     id: editingId || createId(),
     title: titleInput.value.trim(),
     author: authorInput.value.trim(),
@@ -188,7 +219,9 @@ renderBooks();
 // 다른 탭에서 API 도서를 추가하면 최신 목록을 반영해 이전 배열로 덮어쓰지 않게 합니다.
 window.addEventListener("storage", (event) => {
   if (event.storageArea !== localStorage || (event.key !== STORAGE_KEY && event.key !== null)) return;
+  const wasReady = storageReady;
   books = loadBooks();
+  if (!wasReady && storageReady) showMessage("저장 데이터를 다시 읽었습니다. 이제 서재를 수정할 수 있습니다.");
   if (editingId && !books.some((book) => book.id === editingId)) resetForm();
   renderBooks();
 });
